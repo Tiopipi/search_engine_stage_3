@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search and Statistics</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .tab {
+            display: flex;
+            cursor: pointer;
+            background-color: #f1f1f1;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab button {
+            flex: 1;
+            padding: 14px;
+            text-align: center;
+            border: none;
+            outline: none;
+            background-color: inherit;
+            font-size: 16px;
+        }
+        .tab button.active {
+            background-color: #ddd;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .search-container, .stats-container {
+            margin-bottom: 20px;
+        }
+        .result-box, .statistics-box {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            margin-top: 10px;
+        }
+        form label {
+            margin-top: 10px;
+            display: block;
+        }
+        form input, form select, form button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        form button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        form button:hover {
+            background-color: #45a049;
+        }
+    </style>
+    <script>
+        function openTab(event, tabName) {
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            const buttons = document.querySelectorAll('.tab button');
+            buttons.forEach(button => button.classList.remove('active'));
+
+            document.getElementById(tabName).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        async function searchClient() {
+            const query = document.getElementById('client-query').value.trim();
+            const title = document.getElementById('title').value.trim();
+            const author = document.getElementById('author').value.trim();
+            const language = document.getElementById('language').value.trim();
+            const year = document.getElementById('year').value.trim();
+            const month = document.getElementById('month').value.trim();
+            const day = document.getElementById('day').value.trim();
+            const from = document.getElementById('from').value.trim();
+            const to = document.getElementById('to').value.trim();
+
+            if (!query) {
+                alert("Please enter one or more words to search.");
+                return;
+            }
+
+            const params = new URLSearchParams();
+            if (title) params.set('title', title);
+            if (author) params.set('author', author);
+            if (language) params.set('language', language);
+            if (year) params.set('year', year);
+            if (month) params.set('month', month);
+            if (day) params.set('day', day);
+            if (from) params.set('from', from);  // Fecha de inicio
+            if (to) params.set('to', to);
+
+
+            const url = `http://localhost:8080/documents/${encodeURIComponent(query)}?${params.toString()}`;
+            document.getElementById('client-results').innerText = 'Loading...';
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                document.getElementById('client-results').innerHTML = formatResults(data);
+            } catch (error) {
+                console.error(`Error: ${error}`);
+                document.getElementById('client-results').innerText = 'Failed to fetch results.';
+            }
+        }
+
+        function formatResults(data) {
+            if (!data || Object.keys(data).length === 0) return '<p>No results found.</p>';
+
+            const groupedByDoc = {};
+
+            Object.keys(data).forEach(word => {
+                const item = data[word];
+
+                item.id.forEach((docId, index) => {
+                    const positions = item.p[index] || [];
+                    const frequency = item.f[index] || 0;
+                    const paragraphs = item.pa[index] || [];
+                    const title = item.t[index] || "Unknown Title";
+
+                    if (!groupedByDoc[docId]) {
+                        groupedByDoc[docId] = {
+                            title: title,
+                            words: {}
+                        };
+                    }
+
+                    if (!groupedByDoc[docId].words[word]) {
+                        groupedByDoc[docId].words[word] = {
+                            positions: [],
+                            frequency: 0,
+                            paragraphs: []
+                        };
+                    }
+
+                    groupedByDoc[docId].words[word].positions = [
+                        ...new Set(groupedByDoc[docId].words[word].positions.concat(positions))
+                    ];
+                    groupedByDoc[docId].words[word].paragraphs = [
+                        ...new Set(groupedByDoc[docId].words[word].paragraphs.concat(paragraphs))
+                    ];
+                    groupedByDoc[docId].words[word].frequency += frequency;
+                });
+            });
+
+            return Object.keys(groupedByDoc).map(docId => {
+                const docData = groupedByDoc[docId];
+                return `
+                    <div class="result-box">
+                        <h4>
+                            <a href="http://localhost:8080/books/${docId}.txt" target="_blank" style="text-decoration: none; color: blue;">
+                                ${docData.title}
+                            </a>
+                        </h4>
+                        ${Object.keys(docData.words).map(word => {
+                    const wordData = docData.words[word];
+                    return `
+                                <div class="word-group">
+                                    <h5>Word: "${word}"</h5>
+                                    <p><strong>Frequency:</strong> ${wordData.frequency}</p>
+                                    <p><strong>Positions:</strong> ${wordData.positions.join(', ')}</p>
+                                    <p><strong>Paragraphs:</strong> ${wordData.paragraphs.join(' ')}</p>
+                                </div>
+                            `;
+                }).join('')}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchStatistics() {
+            const statType = document.getElementById('stat-type').value.trim();
+            const params = new URLSearchParams();
+            const url = `http://localhost:8080/stats/${encodeURIComponent(statType)}?${params.toString()}`;
+
+            document.getElementById('statistics-results').innerText = 'Loading...';
+
+            try {
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status} - ${response.statusText}`);
+                }
+
+                // Obtener la respuesta como texto
+                const textData = await response.text();
+
+                // Lógica para limpiar la respuesta según el tipo de estadística
+                let cleanedData = '';
+
+                // Si es 'languages', hacemos un procesamiento especial
+                if (statType === 'languages') {
+                    cleanedData = textData.replace(/{languages=/, '').replace(/}/, '').trim();
+                    // Ajustar el formato para destacar las secciones en negrita
+                    cleanedData = cleanedData.replace(
+                        /Languages:/,
+                        '<strong>Languages:</strong>'
+                    ).replace(
+                        /Total books per language:/,
+                        '<strong>Total books per language:</strong>'
+                    );
+                }else if (statType === 'countbooksperyear') {
+                    // Quitar las llaves y el prefijo {countbooksperyear={
+                    const yearData = textData
+                        .replace(/{countbooksperyear={|}}/g, '')
+                        .trim()
+                        .split(', ');
+
+                    // Convertir a un array de objetos { year, count }
+                    const yearEntries = yearData.map(entry => {
+                        const [year, count] = entry.split('=');
+                        return { year: parseInt(year), count: parseInt(count) };
+                    });
+
+                    // Ordenar los años de menor a mayor
+                    yearEntries.sort((a, b) => a.year - b.year);
+
+                    // Crear formato con cada año en negrita seguido de ": count"
+                    cleanedData = yearEntries
+                        .map(entry => `<strong>${entry.year}:</strong> ${entry.count}`)
+                        .join('<br>');
+                }else if (statType === 'olderbook' || statType === 'newerbook') {
+                    const cleanText = textData.replace(/}$/, '');
+
+                    // Evitar duplicaciones y extraer datos únicos
+                    const titleMatch = cleanText.match(/Title: ([^,]*)/);
+                    const releaseDateMatch = cleanText.match(/Release Date: ([^\n]*)/);
+
+                    const title = titleMatch ? `<strong>Title:</strong> ${titleMatch[1]}` : '';
+                    const releaseDate = releaseDateMatch
+                        ? `<strong>Release Date:</strong> ${releaseDateMatch[1]}`
+                        : '';
+
+                    cleanedData = `${title}<br>${releaseDate}`;
+                } else if (statType === 'searchstatistics') {
+                    // Quitar las llaves y el prefijo
+                    cleanedData = textData
+                        .replace(/{searchstatistics=/, '')
+                        .replace(/}/, '')
+                        .trim();
+
+                    // Formatear con etiquetas en negrita y líneas separadas
+                    const totalSearchesMatch = cleanedData.match(/Total Searches: (\d+)/);
+                    const mostSearchedMatch = cleanedData.match(/Most Searched: ([^\n]*)/);
+                    const uniqueQueriesMatch = cleanedData.match(/Unique Queries: (\d+)/);
+
+                    const totalSearches = totalSearchesMatch ? `<strong>Total Searches:</strong> ${totalSearchesMatch[1]}` : '';
+                    const mostSearched = mostSearchedMatch ? `<strong>Most Searched:</strong> ${mostSearchedMatch[1]}` : '';
+                    const uniqueQueries = uniqueQueriesMatch ? `<strong>Unique Queries:</strong> ${uniqueQueriesMatch[1]}` : '';
+
+                    cleanedData = `
+                ${totalSearches}<br>
+                ${mostSearched}<br>
+                ${uniqueQueries}
+            `;
+                }else if (statType === 'countbooksperyear') {
+                    cleanedData = textData.replace(/{countbooksperyear={/, '').replace(/}}/, '').trim();
+                }
+                else {
+                    cleanedData = textData.replace(/{.*?=(.*)}/, '$1').trim();
+                }
+
+                // Mostrar la respuesta limpia
+                document.getElementById('statistics-results').innerHTML = `
+                  <h4>Statistics Result:</h4>
+                  <pre>${cleanedData}</pre>
+                `;
+            } catch (error) {
+                console.error("Error fetching statistics:", error);
+                document.getElementById('statistics-results').innerText = `Failed to fetch statistics: ${error.message}`;
+            }
+        }
+
+        async function searchDocumentWithHighestFrequency() {
+            const word = document.getElementById('word-query').value.trim();
+
+            if (!word) {
+                document.getElementById('word-query-result').innerText = 'Please enter a word to search.';
+                return;
+            }
+
+            const url = `http://localhost:8080/stats/documentWithHighestFrequency?word=${encodeURIComponent(word)}`;
+            document.getElementById('word-query-result').innerText = 'Loading...';
+
+            try {
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status} - ${response.statusText}`);
+                }
+
+                const textData = await response.text();
+
+                // Limpiar el texto recibido: eliminar las llaves y la etiqueta "documentWithHighestFrequency="
+                let cleanedData = textData.replace(/^{documentWithHighestFrequency=|}$/g, '').trim();
+
+                // Dividir el resultado en partes (asumiendo un formato estándar "Title: ..., Frequency: ...")
+                const titleMatch = cleanedData.match(/Title: (.*?), Frequency:/);
+                const frequencyMatch = cleanedData.match(/Frequency: (\d+)/);
+
+                const title = titleMatch ? titleMatch[1] : 'Unknown';
+                const frequency = frequencyMatch ? frequencyMatch[1] : '0';
+
+                // Mostrar el resultado formateado en negrita
+                document.getElementById('word-query-result').innerHTML = `
+      <h4>Word Query Result:</h4>
+      <p><strong>Title:</strong> ${title}</p>
+      <p><strong>Frequency:</strong> ${frequency}</p>
+    `;
+            } catch (error) {
+                console.error('Error fetching word frequency:', error);
+                document.getElementById('word-query-result').innerText = `Failed to fetch result: ${error.message}`;
+            }
+        }
+
+
+
+    </script>
+
+</head>
+<body>
+
+<h1>Search and Statistics</h1>
+<div class="tab">
+    <button class="active" onclick="openTab(event, 'search-tab')">Search</button>
+    <button onclick="openTab(event, 'stats-tab')">Statistics</button>
+</div>
+
+<div id="search-tab" class="tab-content active">
+    <h2>Search with Metadata Filters</h2>
+    <div class="search-container">
+        <h3>Client Search</h3>
+        <form id="client-search-form">
+            <label for="client-query">Enter Query:</label>
+            <input type="text" id="client-query" placeholder="e.g., word1,word2,word3" required>
+
+            <label for="title">Title:</label>
+            <input type="text" id="title" placeholder="e.g., Book Title">
+
+            <label for="author">Author:</label>
+            <input type="text" id="author" placeholder="e.g., Author Name">
+
+            <label for="language">Language:</label>
+            <input type="text" id="language" placeholder="e.g., English">
+
+            <label for="year">Year:</label>
+            <input type="number" id="year" min="1900" max="2100" placeholder="YYYY">
+
+            <label for="month">Month:</label>
+            <input type="number" id="month" min="1" max="12" placeholder="MM">
+
+            <label for="day">Day:</label>
+            <input type="number" id="day" min="1" max="31" placeholder="DD">
+
+            <!-- Nuevos campos para las fechas "from" y "to" -->
+            <label for="from">From (DD-MM-YYYY):</label>
+            <input type="date" id="from">
+
+            <label for="to">To (DD-MM-YYYY):</label>
+            <input type="date" id="to">
+
+            <button type="button" onclick="searchClient()">Search Client</button>
+        </form>
+        <div class="result-box" id="client-results">
+            <h3>Results:</h3>
+            <p>No results yet.</p>
+        </div>
+    </div>
+</div>
+
+<div id="stats-tab" class="tab-content">
+    <h2>Statistics</h2>
+    <div class="statistics-container">
+        <div class="statistics-section">
+            <h3>Choose Statistic Type:</h3>
+            <form id="stats-form">
+                <label for="stat-type">Statistic Type:</label>
+                <select id="stat-type" name="stat-type">
+                    <option value="documents">Document Count</option>
+                    <option value="authors">Authors Count</option>
+                    <option value="words">Word Count</option>
+                    <option value="languages">Languages</option>
+                    <option value="countbooksperyear">Books per Year</option>
+                    <option value="topauthor">Top Author</option>
+                    <option value="olderbook">Oldest Book</option>
+                    <option value="newerbook">Newest Book</option>
+                    <option value="searchstatistics">Search Statistics</option>
+                </select>
+                <button type="button" onclick="fetchStatistics()">Get Statistics</button>
+            </form>
+        </div>
+        <div class="result-box" id="statistics-results">
+            <h4>Statistics Result:</h4>
+            <p>No statistics yet.</p>
+        </div>
+
+    </div>
+
+    <div class="statistics-section">
+        <h3>Search document with the highest frequency for word:</h3>
+        <label for="word-query">Enter Word:</label>
+        <input type="text" id="word-query" placeholder="e.g., african" required>
+        <button type="button" onclick="searchDocumentWithHighestFrequency()">Search</button>
+        <div class="result-box" id="word-query-result">
+            <h3>Word Query Result:</h3>
+            <p>No results yet.</p>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
