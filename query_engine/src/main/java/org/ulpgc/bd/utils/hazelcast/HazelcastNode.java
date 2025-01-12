@@ -23,11 +23,9 @@ public class HazelcastNode {
         networkConfig.getJoin().getTcpIpConfig()
                 .setEnabled(true)
                 .addMember("10.26.14.239:5701")
-                .addMember("10.26.14.243:5701")
-                .addMember("10.26.14.244:5701")
-                .addMember("10.26.14.242:5701")
+                .addMember("10.26.14.236:5701")
                 .addMember("10.26.14.241:5701")
-                .addMember("10.195.135.45:5701")
+                .addMember("10.26.14.225:5701")
                 .addMember("10.26.14.230:5701");
 
         config.addMapConfig(createIMapConfig("DatamartCache"));
